@@ -36,9 +36,9 @@ Everywhere where in the code you see something like: "n - 1", "-n + 1" or "-1",
 this is a subtraction of the width of separators between children frames from
 frame width.
 --]]
-local class = require('middleclass')
-local Window = require('windows.lib.api').Window
-local round = require('windows.lib.util').round
+local class = require("middleclass")
+local Window = require("windows.lib.api").Window
+local round = require("windows.lib.util").round
 local list_extend = vim.list_extend
 
 ---Width threshold
@@ -57,498 +57,588 @@ local THRESHOLD = 1
 ---@field _fixed_width  boolean
 ---@field _fixed_height boolean
 ---@field _curwin_frame boolean
-local Frame = class('win.Frame')
+local Frame = class("win.Frame")
 
 ---@param layout table
 ---@param id? string
 ---@param parent? win.Frame
 function Frame:initialize(layout, id, parent)
-   layout = layout or vim.fn.winlayout()
-   self.id = id or '0'
-   self.parent = parent
+	layout = layout or vim.fn.winlayout()
+	self.id = id or "0"
+	self.parent = parent
 
-   -- Set the new_width and new_height of the top frame, since it can't be
-   -- changed.
-   if not parent then
-      self.new_width = vim.o.columns
-      self.new_height = vim.o.lines - vim.o.cmdheight
-                        - (vim.o.tabline ~= '' and 1 or 0) -- tabline
-                        - 1 -- statusline
-   end
+	-- Set the new_width and new_height of the top frame, since it can't be
+	-- changed.
+	if not parent then
+		self.new_width = vim.o.columns
+		self.new_height = vim.o.lines
+			- vim.o.cmdheight
+			- (vim.o.tabline ~= "" and 1 or 0) -- tabline
+			- 1 -- statusline
+	end
 
-   self.type = layout[1]
-   if self.type == 'leaf' then
-      self.win = Window(layout[2])
-   else -- 'row' or 'col'
-      local children = {}  ---@type win.Frame[]
-      for i, l in ipairs(layout[2]) do
-         children[i] = Frame(l, self.id..i, self)
-      end
-      -- for i, frame in ipairs(children) do
-      --    frame.prev = children[i-1]
-      --    frame.next = children[i+1]
-      -- end
-      self.children = children
-   end
+	self.type = layout[1]
+	if self.type == "leaf" then
+		self.win = Window(layout[2])
+	else -- 'row' or 'col'
+		local children = {} ---@type win.Frame[]
+		for i, l in ipairs(layout[2]) do
+			children[i] = Frame(l, self.id .. i, self)
+		end
+		-- for i, frame in ipairs(children) do
+		--    frame.prev = children[i-1]
+		--    frame.next = children[i+1]
+		-- end
+		self.children = children
+	end
 end
 
 ---Calculate frame widths for autowidth functionality.
 ---@param curwinLeaf win.Frame
 function Frame:autowidth(curwinLeaf)
-   local curwin = curwinLeaf.win
+	local curwin = curwinLeaf.win
 
-   local curwinFrame = self:get_child_with_frame(curwinLeaf)
+	local curwinFrame = self:get_child_with_frame(curwinLeaf)
 
-   if self.type == 'col' then
-      local width = self.new_width
-      for _, frame in ipairs(self.children) do
-         frame.new_width = width
-         if frame.type ~= 'leaf' then
-            if frame == curwinFrame then
-               frame:autowidth(curwinLeaf)
-            else
-               frame:equalize_windows(true, false)
-            end
-         end
-      end
-   elseif self.type == 'row' then
-      local room = self.new_width
-      local topFrame_leafs = self:get_longest_row()
+	if self.type == "col" then
+		local width = self.new_width
+		for _, frame in ipairs(self.children) do
+			frame.new_width = width
+			if frame.type ~= "leaf" then
+				if frame == curwinFrame then
+					frame:autowidth(curwinLeaf)
+				else
+					frame:equalize_windows(true, false)
+				end
+			end
+		end
+	elseif self.type == "row" then
+		local room = self.new_width
+		local topFrame_leafs = self:get_longest_row()
 
-      local totwincount = #topFrame_leafs
+		local totwincount = #topFrame_leafs
 
-      -- Exclude fixed width frames from consideration.
-      for _, frame in ipairs(self.children) do
-         if frame ~= curwinFrame and frame:is_fixed_width() then
-            local width = frame:get_width()
-            frame.new_width = width
-            room = room - width - 1
-            frame:equalize_windows(true, false)
+		-- Exclude fixed width frames from consideration.
+		for _, frame in ipairs(self.children) do
+			if frame ~= curwinFrame and frame:is_fixed_width() then
+				local width = frame:get_width()
+				frame.new_width = width
+				room = room - width - 1
+				frame:equalize_windows(true, false)
 
-            totwincount = totwincount - #frame:get_longest_row()
-         end
-      end
+				totwincount = totwincount - #frame:get_longest_row()
+			end
+		end
 
-      local curwin_wanted_width = curwin:get_wanted_width()
-      local wanted_width = curwinFrame:get_min_width(curwin, curwin_wanted_width)
+		local curwin_wanted_width = curwin:get_wanted_width()
+		local wanted_width = curwinFrame:get_min_width(curwin, curwin_wanted_width)
 
-      local n = #curwinFrame:get_longest_row()
-      local N = totwincount
-      local owed_width = round((room - N + 1) * n / N + n - 1)
+		local n = #curwinFrame:get_longest_row()
+		local N = totwincount
+		local owed_width = round((room - N + 1) * n / N + n - 1)
 
-      totwincount = totwincount - n
+		totwincount = totwincount - n
 
-      local width = (wanted_width > owed_width) and wanted_width or owed_width
+		local width = (wanted_width > owed_width) and wanted_width or owed_width
 
-      -- Remove unnecessary windows "breathing", i.e. changing size in few cells.
-      if curwinFrame.type == 'leaf' then
-         local curwin_width = curwin:get_width()
-         if curwin_width - THRESHOLD < width and width <= curwin_width + THRESHOLD
-         then
-            width = curwin_width
-         end
-      end
+		-- Remove unnecessary windows "breathing", i.e. changing size in few cells.
+		if curwinFrame.type == "leaf" then
+			local curwin_width = curwin:get_width()
+			if curwin_width - THRESHOLD < width and width <= curwin_width + THRESHOLD then
+				width = curwin_width
+			end
+		end
 
-      curwinFrame.new_width = width
-      room = room - width - 1
-      if curwinFrame.type ~= 'leaf' then
-         curwinFrame:autowidth(curwinLeaf)
-      end
+		curwinFrame.new_width = width
+		room = room - width - 1
+		if curwinFrame.type ~= "leaf" then
+			curwinFrame:autowidth(curwinLeaf)
+		end
 
-      ---All children frames that are not curwinFrame and not fixed width.
-      local other_frames = {} ---@type win.Frame[]
-      for _, frame in ipairs(self.children) do
-         if frame ~= curwinFrame and not frame:is_fixed_width() then
-            table.insert(other_frames, frame)
-         end
-      end
+		---All children frames that are not curwinFrame and not fixed width.
+		local other_frames = {} ---@type win.Frame[]
+		for _, frame in ipairs(self.children) do
+			if frame ~= curwinFrame and not frame:is_fixed_width() then
+				table.insert(other_frames, frame)
+			end
+		end
 
-      local Nf = #other_frames
-      for i, frame in ipairs(other_frames) do
-         if i == Nf then
-            frame.new_width = room
-         else
-            local n = #frame:get_longest_row()
-            local N = totwincount
-            local w = round((room - N + 1) * n / N + n - 1)
-            if frame.type == 'leaf' then
-               -- Remove unnecessary windows "breathing", i.e. changing size in
-               -- few cells.
-               local win_width = frame.win:get_width()
-               if win_width - THRESHOLD < w and w <= win_width + THRESHOLD then
-                  w = win_width
-               end
-            end
-            frame.new_width = w
-            room = room - w - 1
-            totwincount = totwincount - n
-         end
-         if frame.type ~= 'leaf' then
-            frame:equalize_windows(true, false)
-         end
-      end
-   end
+		local Nf = #other_frames
+		for i, frame in ipairs(other_frames) do
+			if i == Nf then
+				frame.new_width = room
+			else
+				local n = #frame:get_longest_row()
+				local N = totwincount
+				local w = round((room - N + 1) * n / N + n - 1)
+				if frame.type == "leaf" then
+					-- Remove unnecessary windows "breathing", i.e. changing size in
+					-- few cells.
+					local win_width = frame.win:get_width()
+					if win_width - THRESHOLD < w and w <= win_width + THRESHOLD then
+						w = win_width
+					end
+				end
+				frame.new_width = w
+				room = room - w - 1
+				totwincount = totwincount - n
+			end
+			if frame.type ~= "leaf" then
+				frame:equalize_windows(true, false)
+			end
+		end
+	end
+end
+
+---Calculate frame heights for autoheight functionality.
+---@param curwinLeaf win.Frame
+function Frame:autoheight(curwinLeaf)
+	local curwin = curwinLeaf.win
+
+	local curwinFrame = self:get_child_with_frame(curwinLeaf)
+
+	if self.type == "row" then
+		local height = self.new_height
+		for _, frame in ipairs(self.children) do
+			frame.new_height = height
+			if frame.type ~= "leaf" then
+				if frame == curwinFrame then
+					frame:autoheight(curwinLeaf)
+				else
+					frame:equalize_windows(false, true)
+				end
+			end
+		end
+	elseif self.type == "col" then
+		local room = self.new_height
+		local topFrame_leafs = self:get_longest_column()
+
+		local totwincount = #topFrame_leafs
+
+		-- Exclude fixed height frames from consideration.
+		for _, frame in ipairs(self.children) do
+			if frame ~= curwinFrame and frame:is_fixed_height() then
+				local height = frame:get_height()
+				frame.new_height = height
+				room = room - height - 1
+				frame:equalize_windows(false, true)
+
+				totwincount = totwincount - #frame:get_longest_column()
+			end
+		end
+
+		local curwin_wanted_height = curwin:get_wanted_height()
+		local wanted_height = curwinFrame:get_min_height(curwin, curwin_wanted_height)
+
+		local n = #curwinFrame:get_longest_column()
+		local N = totwincount
+		local owed_height = round((room - N + 1) * n / N + n - 1)
+
+		totwincount = totwincount - n
+
+		local height = (wanted_height > owed_height) and wanted_height or owed_height
+
+		-- Remove unnecessary windows "breathing", i.e. changing size in few cells.
+		if curwinFrame.type == "leaf" then
+			local curwin_height = curwin:get_height()
+			if curwin_height - THRESHOLD < height and height <= curwin_height + THRESHOLD then
+				height = curwin_height
+			end
+		end
+
+		curwinFrame.new_height = height
+		room = room - height - 1
+		if curwinFrame.type ~= "leaf" then
+			curwinFrame:autoheight(curwinLeaf)
+		end
+
+		---All children frames that are not curwinFrame and not fixed height.
+		local other_frames = {} ---@type win.Frame[]
+		for _, frame in ipairs(self.children) do
+			if frame ~= curwinFrame and not frame:is_fixed_height() then
+				table.insert(other_frames, frame)
+			end
+		end
+
+		local Nf = #other_frames
+		for i, frame in ipairs(other_frames) do
+			if i == Nf then
+				frame.new_height = room
+			else
+				local n = #frame:get_longest_column()
+				local N = totwincount
+				local h = round((room - N + 1) * n / N + n - 1)
+				if frame.type == "leaf" then
+					-- Remove unnecessary windows "breathing", i.e. changing size in
+					-- few cells.
+					local win_height = frame.win:get_height()
+					if win_height - THRESHOLD < h and h <= win_height + THRESHOLD then
+						h = win_height
+					end
+				end
+				frame.new_height = h
+				room = room - h - 1
+				totwincount = totwincount - n
+			end
+			if frame.type ~= "leaf" then
+				frame:equalize_windows(false, true)
+			end
+		end
+	end
 end
 
 ---@param winLeaf win.Frame
 ---@param do_width boolean
 ---@param do_height boolean
 function Frame:maximize_window(winLeaf, do_width, do_height)
-   if do_width then
-      local topFrame_width = self:get_width()
-      local topFrame_wanted_width = self:get_min_width(winLeaf.win, topFrame_width)
+	if do_width then
+		local topFrame_width = self:get_width()
+		local topFrame_wanted_width = self:get_min_width(winLeaf.win, topFrame_width)
 
-      winLeaf.new_width = 2 * topFrame_width - topFrame_wanted_width
-   end
+		winLeaf.new_width = 2 * topFrame_width - topFrame_wanted_width
+	end
 
-   if do_height then
-      local topFrame_height = self:get_height()
-      local topFrame_wanted_height = self:get_min_height(winLeaf.win, topFrame_height)
+	if do_height then
+		local topFrame_height = self:get_height()
+		local topFrame_wanted_height = self:get_min_height(winLeaf.win, topFrame_height)
 
-      winLeaf.new_height = 2 * topFrame_height - topFrame_wanted_height
-   end
+		winLeaf.new_height = 2 * topFrame_height - topFrame_wanted_height
+	end
 
-   local winFrame = winLeaf
-   local parentFrame = winFrame.parent
-   while parentFrame do
-      if parentFrame.type == 'col' then
+	local winFrame = winLeaf
+	local parentFrame = winFrame.parent
+	while parentFrame do
+		if parentFrame.type == "col" then
+			if do_height then
+				local height = winFrame.new_height + #parentFrame.children - 1
+				for _, frame in ipairs(parentFrame.children) do
+					if frame ~= winFrame then
+						if frame:is_fixed_height() then
+							frame.new_height = frame:get_height()
+						else
+							local n = #frame:get_longest_column()
+							frame.new_height = vim.o.winminheight * n + n - 1
+						end
+						height = height + frame.new_height
+					end
+				end
+				parentFrame.new_height = height
+			end
 
-         if do_height then
-            local height = winFrame.new_height + #parentFrame.children - 1
-            for _, frame in ipairs(parentFrame.children) do
-               if frame ~= winFrame then
-                  if frame:is_fixed_height() then
-                     frame.new_height = frame:get_height()
-                  else
-                     local n = #frame:get_longest_column()
-                     frame.new_height = vim.o.winminheight * n + n - 1
-                  end
-                  height = height + frame.new_height
-               end
-            end
-            parentFrame.new_height = height
-         end
+			if do_width then
+				local width = winFrame.new_width
+				parentFrame.new_width = width
+				for _, frame in ipairs(parentFrame.children) do
+					if frame ~= winFrame then
+						frame.new_width = width
+					end
+				end
+			end
+		elseif parentFrame.type == "row" then
+			if do_width then
+				local width = winFrame.new_width + #parentFrame.children - 1
+				for _, frame in ipairs(parentFrame.children) do
+					if frame ~= winFrame then
+						if frame:is_fixed_width() then
+							frame.new_width = frame:get_width()
+						else
+							local n = #frame:get_longest_row()
+							frame.new_width = vim.o.winminwidth * n + n - 1
+						end
+						width = width + frame.new_width
+					end
+				end
+				parentFrame.new_width = width
+			end
 
-         if do_width then
-            local width = winFrame.new_width
-            parentFrame.new_width = width
-            for _, frame in ipairs(parentFrame.children) do
-               if frame ~= winFrame then
-                  frame.new_width = width
-               end
-            end
-         end
+			if do_height then
+				local height = winFrame.new_height
+				parentFrame.new_height = height
+				for _, frame in ipairs(parentFrame.children) do
+					if frame ~= winFrame then
+						frame.new_height = height
+					end
+				end
+			end
+		end
 
-      elseif parentFrame.type == 'row' then
+		for _, frame in ipairs(parentFrame.children) do
+			if frame.type ~= "leaf" and frame ~= winFrame then
+				frame:equalize_windows(do_width, do_height)
+			end
+		end
 
-         if do_width then
-            local width = winFrame.new_width + #parentFrame.children - 1
-            for _, frame in ipairs(parentFrame.children) do
-               if frame ~= winFrame then
-                  if frame:is_fixed_width() then
-                     frame.new_width = frame:get_width()
-                  else
-                     local n = #frame:get_longest_row()
-                     frame.new_width = vim.o.winminwidth * n + n - 1
-                  end
-                  width = width + frame.new_width
-               end
-            end
-            parentFrame.new_width = width
-         end
-
-         if do_height then
-            local height = winFrame.new_height
-            parentFrame.new_height = height
-            for _, frame in ipairs(parentFrame.children) do
-               if frame ~= winFrame then
-                  frame.new_height = height
-               end
-            end
-         end
-
-      end
-
-      for _, frame in ipairs(parentFrame.children) do
-         if frame.type ~= 'leaf' and frame ~= winFrame then
-            frame:equalize_windows(do_width, do_height)
-         end
-      end
-
-      winFrame = parentFrame
-      parentFrame = parentFrame.parent
-   end
+		winFrame = parentFrame
+		parentFrame = parentFrame.parent
+	end
 end
 
 ---@param do_width boolean
 ---@param do_height boolean
 function Frame:equalize_windows(do_width, do_height)
-   if self.type == 'col' then
-      if do_height then
-         local Nw = #self:get_longest_column() -- number of windows
+	if self.type == "col" then
+		if do_height then
+			local Nw = #self:get_longest_column() -- number of windows
 
-         -- #self.children - 1 : height of separators between children frames
-         local room = self.new_height - #self.children + 1
+			-- #self.children - 1 : height of separators between children frames
+			local room = self.new_height - #self.children + 1
 
-         ---Variable height frames
-         ---@type win.Frame[]
-         local var_height_frames = {}
-         for _, frame in ipairs(self.children) do
-            if frame:is_fixed_height() then
-               frame.new_height = frame:get_height()
-               room = room - frame.new_height - 1
-               Nw = Nw - #frame:get_longest_column()
-            else
-               table.insert(var_height_frames, frame)
-            end
-         end
+			---Variable height frames
+			---@type win.Frame[]
+			local var_height_frames = {}
+			for _, frame in ipairs(self.children) do
+				if frame:is_fixed_height() then
+					frame.new_height = frame:get_height()
+					room = room - frame.new_height - 1
+					Nw = Nw - #frame:get_longest_column()
+				else
+					table.insert(var_height_frames, frame)
+				end
+			end
 
-         local Nf = #var_height_frames -- number of frames
-         for i, frame in ipairs(var_height_frames) do
-            if i == Nf then
-               frame.new_height = room
-            else
-               local n = #frame:get_longest_column()
-               local height = round(room * n / Nw + n - 1)
-               Nw = Nw - n
-               frame.new_height = height
-               room = room - height
-            end
-         end
+			local Nf = #var_height_frames -- number of frames
+			for i, frame in ipairs(var_height_frames) do
+				if i == Nf then
+					frame.new_height = room
+				else
+					local n = #frame:get_longest_column()
+					local height = round(room * n / Nw + n - 1)
+					Nw = Nw - n
+					frame.new_height = height
+					room = room - height
+				end
+			end
+		end
 
-      end
+		for _, frame in ipairs(self.children) do
+			if do_width then
+				frame.new_width = self.new_width
+			end
+			if frame.type ~= "leaf" then
+				frame:equalize_windows(do_width, do_height)
+			end
+		end
+	elseif self.type == "row" then
+		if do_width then
+			local Nw = #self:get_longest_row() -- number of windows
 
-      for _, frame in ipairs(self.children) do
-         if do_width then
-            frame.new_width = self.new_width
-         end
-         if frame.type ~= 'leaf' then
-            frame:equalize_windows(do_width, do_height)
-         end
-      end
-   elseif self.type == 'row' then
-      if do_width then
-         local Nw = #self:get_longest_row() -- number of windows
+			-- #self.children - 1 : widths of separators between children frames
+			local room = self.new_width - #self.children + 1
 
-         -- #self.children - 1 : widths of separators between children frames
-         local room = self.new_width - #self.children + 1
+			local var_width_frames = {} ---@type win.Frame[]
+			for _, frame in ipairs(self.children) do
+				if frame:is_fixed_width() then
+					frame.new_width = frame:get_width()
+					room = room - frame.new_width - 1
+					Nw = Nw - #frame:get_longest_row()
+				else
+					table.insert(var_width_frames, frame)
+				end
+			end
 
-         local var_width_frames = {} ---@type win.Frame[]
-         for _, frame in ipairs(self.children) do
-            if frame:is_fixed_width() then
-               frame.new_width = frame:get_width()
-               room = room - frame.new_width - 1
-               Nw = Nw - #frame:get_longest_row()
-            else
-               table.insert(var_width_frames, frame)
-            end
-         end
+			local Nf = #var_width_frames -- number of frames
+			for i, frame in ipairs(var_width_frames) do
+				if i == Nf then
+					frame.new_width = room
+				else
+					local n = #frame:get_longest_row()
+					local width = round(room * n / Nw + n - 1)
+					Nw = Nw - n
+					frame.new_width = width
+					room = room - width
+				end
+			end
+		end
 
-         local Nf = #var_width_frames -- number of frames
-         for i, frame in ipairs(var_width_frames) do
-            if i == Nf then
-               frame.new_width = room
-            else
-               local n = #frame:get_longest_row()
-               local width = round(room * n / Nw + n - 1)
-               Nw = Nw - n
-               frame.new_width = width
-               room = room - width
-            end
-         end
-      end
-
-      for _, frame in ipairs(self.children) do
-         if do_height then
-            frame.new_height = self.new_height
-         end
-         if frame.type ~= 'leaf' then
-            frame:equalize_windows(do_width, do_height)
-         end
-      end
-   end
+		for _, frame in ipairs(self.children) do
+			if do_height then
+				frame.new_height = self.new_height
+			end
+			if frame.type ~= "leaf" then
+				frame:equalize_windows(do_width, do_height)
+			end
+		end
+	end
 end
 
 ---@return win.WinResizeData[]
 function Frame:get_data_for_width_resizing()
-   local r = {}
-   local leafs = self:get_leafs_for_width_resizing()
-   for i, frame in ipairs(leafs) do
-      r[i] = {
-         win = frame.win,
-         width = frame.new_width
-      }
-   end
-   return r
+	local r = {}
+	local leafs = self:get_leafs_for_width_resizing()
+	for i, frame in ipairs(leafs) do
+		r[i] = {
+			win = frame.win,
+			width = frame.new_width,
+		}
+	end
+	return r
 end
 
 ---@return win.WinResizeData[]
 function Frame:get_data_for_height_resizing()
-   local r = {}
-   local leafs = self:get_leafs_for_height_resizing()
-   for i, frame in ipairs(leafs) do
-      r[i] = {
-         win = frame.win,
-         height = frame.new_height
-      }
-   end
-   return r
+	local r = {}
+	local leafs = self:get_leafs_for_height_resizing()
+	for i, frame in ipairs(leafs) do
+		r[i] = {
+			win = frame.win,
+			height = frame.new_height,
+		}
+	end
+	return r
 end
 
 ---Extract the list of windows suitable for width resizing.
 ---@return win.Frame[]
 function Frame:get_leafs_for_width_resizing()
-   local r = {}
-   if self.type == 'row' then
-      local N = #self.children
-      local add_last
+	local r = {}
+	if self.type == "row" then
+		local N = #self.children
+		local add_last
 
-      for i, frame in ipairs(self.children) do
-         if i < N or add_last then
-            local f = frame:get_direct_child_leaf()
-            if f then
-               table.insert(r, f)
-            end
-            if i == N-1 then
-               add_last = not f
-            end
-         end
-         if frame.type ~= 'leaf' then
-            list_extend(r, frame:get_leafs_for_width_resizing())
-         end
-      end
-
-   elseif self.type == 'col' then
-      for _, frame in ipairs(self.children) do
-         if frame.type ~= 'leaf' then
-            list_extend(r, frame:get_leafs_for_width_resizing())
-         end
-      end
-   else -- self.type == 'leaf'
-      -- We get here only if root has only one "leaf" frame
-      return { self }
-   end
-   return r
+		for i, frame in ipairs(self.children) do
+			if i < N or add_last then
+				local f = frame:get_direct_child_leaf()
+				if f then
+					table.insert(r, f)
+				end
+				if i == N - 1 then
+					add_last = not f
+				end
+			end
+			if frame.type ~= "leaf" then
+				list_extend(r, frame:get_leafs_for_width_resizing())
+			end
+		end
+	elseif self.type == "col" then
+		for _, frame in ipairs(self.children) do
+			if frame.type ~= "leaf" then
+				list_extend(r, frame:get_leafs_for_width_resizing())
+			end
+		end
+	else -- self.type == 'leaf'
+		-- We get here only if root has only one "leaf" frame
+		return { self }
+	end
+	return r
 end
 
 ---Extract the list of windows suitable for height resizing.
 ---@return win.Frame[]
 function Frame:get_leafs_for_height_resizing()
-   local r = {}
-   if self.type == 'col' then
-      local N = #self.children
-      local add_last
+	local r = {}
+	if self.type == "col" then
+		local N = #self.children
+		local add_last
 
-      for i, frame in ipairs(self.children) do
-         if i < N or add_last then
-            local f = frame:get_direct_child_leaf()
-            if f then
-               table.insert(r, f)
-            end
-            if i == N-1 then
-               add_last = not f
-            end
-         end
-         if frame.type ~= 'leaf' then
-            list_extend(r, frame:get_leafs_for_height_resizing())
-         end
-      end
-
-   elseif self.type == 'row' then
-      for _, frame in ipairs(self.children) do
-         if frame.type ~= 'leaf' then
-            list_extend(r, frame:get_leafs_for_height_resizing())
-         end
-      end
-   else -- self.type == 'leaf'
-      -- We get here only if root has only one "leaf" frame
-      return { self }
-   end
-   return r
+		for i, frame in ipairs(self.children) do
+			if i < N or add_last then
+				local f = frame:get_direct_child_leaf()
+				if f then
+					table.insert(r, f)
+				end
+				if i == N - 1 then
+					add_last = not f
+				end
+			end
+			if frame.type ~= "leaf" then
+				list_extend(r, frame:get_leafs_for_height_resizing())
+			end
+		end
+	elseif self.type == "row" then
+		for _, frame in ipairs(self.children) do
+			if frame.type ~= "leaf" then
+				list_extend(r, frame:get_leafs_for_height_resizing())
+			end
+		end
+	else -- self.type == 'leaf'
+		-- We get here only if root has only one "leaf" frame
+		return { self }
+	end
+	return r
 end
 
 ---@return boolean
 function Frame:is_fixed_width()
-   if self._fixed_width == nil then
-      local topFrame = self
-      while topFrame.parent do ---@diagnostic disable-line
-         topFrame = topFrame.parent
-      end
-      ---@cast topFrame -nil
-      topFrame:_mark_fixed_width()
-   end
-   return self._fixed_width
+	if self._fixed_width == nil then
+		local topFrame = self
+		while topFrame.parent do ---@diagnostic disable-line
+			topFrame = topFrame.parent
+		end
+		---@cast topFrame -nil
+		topFrame:_mark_fixed_width()
+	end
+	return self._fixed_width
 end
 
 ---@return boolean
 function Frame:is_fixed_height()
-   if self._fixed_height == nil then
-      local topFrame = self
-      while topFrame.parent do ---@diagnostic disable-line
-         topFrame = topFrame.parent
-      end
-      ---@cast topFrame -nil
-      topFrame:_mark_fixed_height()
-   end
-   return self._fixed_height
+	if self._fixed_height == nil then
+		local topFrame = self
+		while topFrame.parent do ---@diagnostic disable-line
+			topFrame = topFrame.parent
+		end
+		---@cast topFrame -nil
+		topFrame:_mark_fixed_height()
+	end
+	return self._fixed_height
 end
 
 function Frame:_mark_fixed_width()
-   if self.type == 'leaf' then
-      if self.win:is_ignored() then
-         self._fixed_width = true
-      else
-         -- Frame with one window: fixed width if 'winfixwidth' set.
-         self._fixed_width = self.win:get_option('winfixwidth')
-      end
-   elseif self.type == 'row' then
-      --  The frame is fixed width if all of the frames in the row are fixed width.
-      self._fixed_width = true
-      for _, frame in ipairs(self.children) do
-         frame:_mark_fixed_width()
-         if not frame._fixed_width then
-            self._fixed_width = false
-         end
-      end
-   else -- self.type == 'col'
-      --  The frame is fixed width if one of the frames in the column is fixed width.
-      self._fixed_width = false
-      for _, frame in ipairs(self.children) do
-         frame:_mark_fixed_width()
-         if frame._fixed_width then
-            self._fixed_width = true
-         end
-      end
-   end
+	if self.type == "leaf" then
+		if self.win:is_ignored() then
+			self._fixed_width = true
+		else
+			-- Frame with one window: fixed width if 'winfixwidth' set.
+			self._fixed_width = self.win:get_option("winfixwidth")
+		end
+	elseif self.type == "row" then
+		--  The frame is fixed width if all of the frames in the row are fixed width.
+		self._fixed_width = true
+		for _, frame in ipairs(self.children) do
+			frame:_mark_fixed_width()
+			if not frame._fixed_width then
+				self._fixed_width = false
+			end
+		end
+	else -- self.type == 'col'
+		--  The frame is fixed width if one of the frames in the column is fixed width.
+		self._fixed_width = false
+		for _, frame in ipairs(self.children) do
+			frame:_mark_fixed_width()
+			if frame._fixed_width then
+				self._fixed_width = true
+			end
+		end
+	end
 end
 
 function Frame:_mark_fixed_height()
-   if self.type == 'leaf' then
-      if self.win:is_ignored() then
-         self._fixed_height = true
-      else
-         -- Frame with one window is fixed height if 'winfixheight' set.
-         self._fixed_height = self.win:get_option('winfixheight')
-      end
-   elseif self.type == 'row' then
-      --  The frame is fixed height if one of the frames in the row is fixed height.
-      self._fixed_height = false
-      for _, frame in ipairs(self.children) do
-         frame:_mark_fixed_height()
-         if frame._fixed_height then
-            self._fixed_height = true
-         end
-      end
-   else -- self.type == 'col'
-      --  The frame is fixed height if all of the frames in the column are fixed height.
-      self._fixed_height = true
-      for _, frame in ipairs(self.children) do
-         frame:_mark_fixed_height()
-         if not frame._fixed_height then
-            self._fixed_height = false
-         end
-      end
-   end
+	if self.type == "leaf" then
+		if self.win:is_ignored() then
+			self._fixed_height = true
+		else
+			-- Frame with one window is fixed height if 'winfixheight' set.
+			self._fixed_height = self.win:get_option("winfixheight")
+		end
+	elseif self.type == "row" then
+		--  The frame is fixed height if one of the frames in the row is fixed height.
+		self._fixed_height = false
+		for _, frame in ipairs(self.children) do
+			frame:_mark_fixed_height()
+			if frame._fixed_height then
+				self._fixed_height = true
+			end
+		end
+	else -- self.type == 'col'
+		--  The frame is fixed height if all of the frames in the column are fixed height.
+		self._fixed_height = true
+		for _, frame in ipairs(self.children) do
+			frame:_mark_fixed_height()
+			if not frame._fixed_height then
+				self._fixed_height = false
+			end
+		end
+	end
 end
 
 ---Get child frame that contains target frame.
@@ -556,166 +646,166 @@ end
 ---@return win.Frame
 ---@return integer index Index of child frame among other children.
 function Frame:get_child_with_frame(frame)
-   local n = #self.id
-   assert(frame.id:sub(0, n) == self.id, "The Frame does not contain seeking frame")
-   local i = tonumber(frame.id:sub(n+1, n+1)) --[[@as integer]]
-   return self.children[i], i
+	local n = #self.id
+	assert(frame.id:sub(0, n) == self.id, "The Frame does not contain seeking frame")
+	local i = tonumber(frame.id:sub(n + 1, n + 1)) --[[@as integer]]
+	return self.children[i], i
 end
 
 ---Calculate the maximum number of windows horizontally in this frame and return
 ---these windows "leaf" frames as a list.
 ---@return win.Frame[]
 function Frame:get_longest_row()
-   if self.type == 'leaf' then
-      return { self }
-   elseif self.type == 'row' then
-      local output = {}
-      for _, frame in ipairs(self.children) do
-         list_extend(output, frame:get_longest_row())
-      end
-      return output
-   else -- self.type == 'col'
-      local output
-      local N = 0
-      for _, frame in ipairs(self.children) do
-         local list = frame:get_longest_row()
-         if #list > N then
-            output = list
-            N = #list
-         end
-      end
-      return output
-   end
+	if self.type == "leaf" then
+		return { self }
+	elseif self.type == "row" then
+		local output = {}
+		for _, frame in ipairs(self.children) do
+			list_extend(output, frame:get_longest_row())
+		end
+		return output
+	else -- self.type == 'col'
+		local output
+		local N = 0
+		for _, frame in ipairs(self.children) do
+			local list = frame:get_longest_row()
+			if #list > N then
+				output = list
+				N = #list
+			end
+		end
+		return output
+	end
 end
 
 ---@return win.Frame[]
 function Frame:get_longest_column()
-   if self.type == 'leaf' then
-      return { self }
-   elseif self.type == 'row' then
-      local output
-      local N = 0
-      for _, frame in ipairs(self.children) do
-         local col = frame:get_longest_column()
-         if #col > N then
-            output = col
-            N = #col
-         end
-      end
-      return output
-   else -- self.type == 'col'
-      local output = {}
-      for _, frame in ipairs(self.children) do
-         list_extend(output, frame:get_longest_column())
-      end
-      return output
-   end
+	if self.type == "leaf" then
+		return { self }
+	elseif self.type == "row" then
+		local output
+		local N = 0
+		for _, frame in ipairs(self.children) do
+			local col = frame:get_longest_column()
+			if #col > N then
+				output = col
+				N = #col
+			end
+		end
+		return output
+	else -- self.type == 'col'
+		local output = {}
+		for _, frame in ipairs(self.children) do
+			list_extend(output, frame:get_longest_column())
+		end
+		return output
+	end
 end
 
 ---@param win? win.Window
 ---@return win.Frame[]
 ---@return boolean found
 function Frame:get_longest_row_contains_target_window(win)
-   if self.type == 'leaf' then
-      return { self }, self.win == win
-   elseif self.type == 'row' then
-      local output = {} ---@type win.Frame[]
-      local found = false
-      for _, frame in ipairs(self.children) do
-         local o, f = frame:get_longest_row_contains_target_window(win)
-         list_extend(output, o)
-         found = found or f
-      end
-      return output, found
-   else -- self.type == 'col'
-      local output = {} ---@type win.Frame[]
-      for _, node in ipairs(self.children) do
-         local o, f = node:get_longest_row_contains_target_window(win)
-         if f then
-            return o, true
-         elseif #o > #output then
-            output = o
-         end
-      end
-      return output, false
-   end
+	if self.type == "leaf" then
+		return { self }, self.win == win
+	elseif self.type == "row" then
+		local output = {} ---@type win.Frame[]
+		local found = false
+		for _, frame in ipairs(self.children) do
+			local o, f = frame:get_longest_row_contains_target_window(win)
+			list_extend(output, o)
+			found = found or f
+		end
+		return output, found
+	else -- self.type == 'col'
+		local output = {} ---@type win.Frame[]
+		for _, node in ipairs(self.children) do
+			local o, f = node:get_longest_row_contains_target_window(win)
+			if f then
+				return o, true
+			elseif #o > #output then
+				output = o
+			end
+		end
+		return output, false
+	end
 end
 
 ---@param win? win.Window
 ---@return win.Frame[]
 ---@return boolean found
 function Frame:get_longest_column_contains_target_window(win)
-   if self.type == 'leaf' then
-      return { self }, self.win == win
-   elseif self.type == 'col' then
-      local output = {} ---@type win.Frame[]
-      local found = false
-      for _, frame in ipairs(self.children) do
-         local o, f = frame:get_longest_column_contains_target_window(win)
-         list_extend(output, o)
-         found = found or f
-      end
-      return output, found
-   else -- self.type == 'row'
-      local output = {} ---@type win.Frame[]
-      for _, node in ipairs(self.children) do
-         local o, f = node:get_longest_column_contains_target_window(win)
-         if f then
-            return o, true
-         elseif #o > #output then
-            output = o
-         end
-      end
-      return output, false
-   end
+	if self.type == "leaf" then
+		return { self }, self.win == win
+	elseif self.type == "col" then
+		local output = {} ---@type win.Frame[]
+		local found = false
+		for _, frame in ipairs(self.children) do
+			local o, f = frame:get_longest_column_contains_target_window(win)
+			list_extend(output, o)
+			found = found or f
+		end
+		return output, found
+	else -- self.type == 'row'
+		local output = {} ---@type win.Frame[]
+		for _, node in ipairs(self.children) do
+			local o, f = node:get_longest_column_contains_target_window(win)
+			if f then
+				return o, true
+			elseif #o > #output then
+				output = o
+			end
+		end
+		return output, false
+	end
 end
 
 ---Return the width of the frame.
 ---@return integer
 function Frame:get_width()
-   if not self.parent then
-      return self.new_width
-   elseif self.type == 'leaf' then
-      return self.win:get_width()
-   elseif self.type == 'row' then
-      local width = 0
-      for _, frame in ipairs(self.children) do
-         width = width + frame:get_width()
-      end
-      width = width + #self.children - 1 -- separators between frames
-      return width
-   else -- self.type == 'col'
-      for _, frame in ipairs(self.children) do
-         if frame.type == 'leaf' then
-            return frame.win:get_width()
-         end
-      end
-      return self.children[1]:get_width()
-   end
+	if not self.parent then
+		return self.new_width
+	elseif self.type == "leaf" then
+		return self.win:get_width()
+	elseif self.type == "row" then
+		local width = 0
+		for _, frame in ipairs(self.children) do
+			width = width + frame:get_width()
+		end
+		width = width + #self.children - 1 -- separators between frames
+		return width
+	else -- self.type == 'col'
+		for _, frame in ipairs(self.children) do
+			if frame.type == "leaf" then
+				return frame.win:get_width()
+			end
+		end
+		return self.children[1]:get_width()
+	end
 end
 
 ---Return the height of the frame.
 ---@return integer
 function Frame:get_height()
-   if not self.parent then
-      return self.new_height
-   elseif self.type == 'leaf' then
-      return self.win:get_height()
-   elseif self.type == 'col' then
-      local height = 0
-      for _, frame in ipairs(self.children) do
-         height = height + frame:get_height()
-      end
-      height = height + #self.children - 1 -- separators between frames
-      return height
-   else -- self.type == 'row'
-      for _, frame in ipairs(self.children) do
-         if frame.type == 'leaf' then
-            return frame.win:get_height()
-         end
-      end
-      return self.children[1]:get_height()
-   end
+	if not self.parent then
+		return self.new_height
+	elseif self.type == "leaf" then
+		return self.win:get_height()
+	elseif self.type == "col" then
+		local height = 0
+		for _, frame in ipairs(self.children) do
+			height = height + frame:get_height()
+		end
+		height = height + #self.children - 1 -- separators between frames
+		return height
+	else -- self.type == 'row'
+		for _, frame in ipairs(self.children) do
+			if frame.type == "leaf" then
+				return frame.win:get_height()
+			end
+		end
+		return self.children[1]:get_height()
+	end
 end
 
 ---Return the minimal width the frame will take, assuming that the `tarwin` will
@@ -726,35 +816,35 @@ end
 ---@return integer
 ---@return win.Frame[]
 function Frame:get_min_width(tarwin, tarwin_width)
-   if self.type == 'leaf' then
-      if self.win == tarwin then
-         ---@diagnostic disable-next-line
-         return tarwin_width and tarwin_width or vim.o.winwidth, { self }
-      elseif self:is_fixed_width() then
-         return self:get_width(), { self }
-      else
-         return vim.o.winminwidth, { self }
-      end
-   elseif self.type == 'row' then
-      local width, leafs = 0, {}
-      for _, frame in pairs(self.children) do
-         local frame_width, frame_leafs = frame:get_min_width(tarwin, tarwin_width)
-         width = width + frame_width
-         list_extend(leafs, frame_leafs)
-      end
-      -- Add the number of separators between subframes.
-      width = width + #self.children - 1
-      return width, leafs
-   else -- self.type == 'col'
-      local width, leafs = 0, {}
-      for _, frame in ipairs(self.children) do
-         local new_width, new_leafs = frame:get_min_width(tarwin, tarwin_width)
-         if new_width > width then
-            width, leafs = new_width, new_leafs
-         end
-      end
-      return width, leafs
-   end
+	if self.type == "leaf" then
+		if self.win == tarwin then
+			---@diagnostic disable-next-line
+			return tarwin_width and tarwin_width or vim.o.winwidth, { self }
+		elseif self:is_fixed_width() then
+			return self:get_width(), { self }
+		else
+			return vim.o.winminwidth, { self }
+		end
+	elseif self.type == "row" then
+		local width, leafs = 0, {}
+		for _, frame in pairs(self.children) do
+			local frame_width, frame_leafs = frame:get_min_width(tarwin, tarwin_width)
+			width = width + frame_width
+			list_extend(leafs, frame_leafs)
+		end
+		-- Add the number of separators between subframes.
+		width = width + #self.children - 1
+		return width, leafs
+	else -- self.type == 'col'
+		local width, leafs = 0, {}
+		for _, frame in ipairs(self.children) do
+			local new_width, new_leafs = frame:get_min_width(tarwin, tarwin_width)
+			if new_width > width then
+				width, leafs = new_width, new_leafs
+			end
+		end
+		return width, leafs
+	end
 end
 
 ---@param tarwin? win.Window the ID of the target window
@@ -762,53 +852,53 @@ end
 ---@return integer
 ---@return win.Frame[]
 function Frame:get_min_height(tarwin, tarwin_height)
-   if self.type == 'leaf' then
-      if self.win == tarwin then
-         ---@diagnostic disable-next-line
-         return tarwin_height and tarwin_height or vim.o.winheight, { self }
-      elseif self:is_fixed_height() then
-         return self:get_height(), { self }
-      else
-         return vim.o.winminheight, { self }
-      end
-   elseif self.type == 'col' then
-      local height, leafs = 0, {}
-      for _, frame in pairs(self.children) do
-         local frame_height, frame_leafs = frame:get_min_height(tarwin, tarwin_height)
-         height = height + frame_height
-         list_extend(leafs, frame_leafs)
-      end
-      -- Add the number of separators between subframes.
-      height = height + #self.children - 1
-      return height, leafs
-   else -- self.type == 'row'
-      local height, leafs = 0, {}
-      for _, frame in ipairs(self.children) do
-         local new_height, new_leafs = frame:get_min_height(tarwin, tarwin_height)
-         if new_height > height then
-            height, leafs = new_height, new_leafs
-         end
-      end
-      return height, leafs
-   end
+	if self.type == "leaf" then
+		if self.win == tarwin then
+			---@diagnostic disable-next-line
+			return tarwin_height and tarwin_height or vim.o.winheight, { self }
+		elseif self:is_fixed_height() then
+			return self:get_height(), { self }
+		else
+			return vim.o.winminheight, { self }
+		end
+	elseif self.type == "col" then
+		local height, leafs = 0, {}
+		for _, frame in pairs(self.children) do
+			local frame_height, frame_leafs = frame:get_min_height(tarwin, tarwin_height)
+			height = height + frame_height
+			list_extend(leafs, frame_leafs)
+		end
+		-- Add the number of separators between subframes.
+		height = height + #self.children - 1
+		return height, leafs
+	else -- self.type == 'row'
+		local height, leafs = 0, {}
+		for _, frame in ipairs(self.children) do
+			local new_height, new_leafs = frame:get_min_height(tarwin, tarwin_height)
+			if new_height > height then
+				height, leafs = new_height, new_leafs
+			end
+		end
+		return height, leafs
+	end
 end
 
 ---Return the leaf frame that contains the the sought-for window.
 ---@param win win.Window
 ---@return win.Frame leaf leaf-type frame with sought-for window
 function Frame:find_window(win)
-   if self.type == 'leaf' then
-      if self.win == win then
-         return self
-      end
-   else
-      for _, frame in ipairs(self.children) do
-         local leaf = frame:find_window(win)
-         if leaf then
-            return leaf
-         end
-      end
-   end ---@diagnostic disable-line
+	if self.type == "leaf" then
+		if self.win == win then
+			return self
+		end
+	else
+		for _, frame in ipairs(self.children) do
+			local leaf = frame:find_window(win)
+			if leaf then
+				return leaf
+			end
+		end
+	end ---@diagnostic disable-line
 end
 
 ---If frame has leaf type frame among its direct children, then return it.
@@ -816,34 +906,34 @@ end
 ---a leaf itself, then return itself.
 ---@return win.Frame | nil
 function Frame:get_direct_child_leaf()
-   if self.type == 'leaf' then
-      return self
-   else
-      for _, frame in ipairs(self.children) do
-         if frame.type == 'leaf' then
-            return frame
-         end
-      end
-   end
+	if self.type == "leaf" then
+		return self
+	else
+		for _, frame in ipairs(self.children) do
+			if frame.type == "leaf" then
+				return frame
+			end
+		end
+	end
 end
 
 ---@return win.Frame[]
 function Frame:get_all_nested_leafs()
-   if self.type == 'leaf' then
-      return { self }
-   else
-      local output = {}
-      for _, frame in ipairs(self.children) do
-         list_extend(output, frame:get_all_nested_leafs())
-      end
-      return output
-   end
+	if self.type == "leaf" then
+		return { self }
+	else
+		local output = {}
+		for _, frame in ipairs(self.children) do
+			list_extend(output, frame:get_all_nested_leafs())
+		end
+		return output
+	end
 end
 
 ---@param l win.Frame
 ---@param r win.Frame
 function Frame.__eq(l, r)
-   return l.id == r.id
+	return l.id == r.id
 end
 
 --------------------------------------------------------------------------------
