@@ -11,7 +11,7 @@ https://user-images.githubusercontent.com/13056013/190786962-01047891-38b1-4e87-
 
 This plugin requires next dependencies:
 
-- [middleclass](https://github.com/anuvyklack/middleclass)  
+- [middleclass](https://github.com/anuvyklack/middleclass)
 - [animation.nvim](https://github.com/anuvyklack/animation.nvim) — optional:
   needed if you want animations
 
@@ -23,6 +23,7 @@ You can install and setup **windows.nvim** with [packer](https://github.com/wbth
 plugin manager using next snippet:
 
 - with animation
+
   ```lua
   use { "anuvyklack/windows.nvim",
      requires = {
@@ -57,8 +58,8 @@ Read about plugins configuration in the [documentation](https://github.com/anuvy
 - `:WindowsMaximize`
 
   Maximize current window. If the window is already maximized, then restore
-  original sizes.  When go to another window while current is maximized - all
-  original sizes will be restored.  If the window will be closed while being
+  original sizes. When go to another window while current is maximized - all
+  original sizes will be restored. If the window will be closed while being
   maximized, then all other windows would be equalized.
 
 - `:WindowsMaximizeVertically`
@@ -84,7 +85,7 @@ Read about plugins configuration in the [documentation](https://github.com/anuvy
 
 ## Keymapings
 
-If you want a keymaps thees are a fitting choice:
+If you want a keymaps these are a fitting choice:
 
 ```lua
 local function cmd(command)
